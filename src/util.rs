@@ -1105,7 +1105,19 @@ pub fn follow_url(client: &Client, url: &Url) -> Result<Url, FollowError> {
     // Obtain the final URL, normalizing tarnover/send's short share path so
     // a server-side 301 from /download/<id> back to /dl/<id> doesn't undo
     // the matcher-level normalization before RemoteFile::parse_url is called.
-    Ok(crate::host::normalize_share_path(response.url().clone()))
+    let mut final_url = crate::host::normalize_share_path(response.url().clone());
+
+    // HTTP requests don't carry the fragment, and reqwest's response.url()
+    // mirrors that — so if any redirect occurred (snd.dx.pe 301s /download/<id>
+    // back to /dl/<id>), the secret living in the original fragment is gone.
+    // Preserve it from the input URL when the redirected URL has none.
+    if final_url.fragment().is_none() {
+        if let Some(frag) = url.fragment() {
+            final_url.set_fragment(Some(frag));
+        }
+    }
+
+    Ok(final_url)
 }
 
 /// URL following error.
