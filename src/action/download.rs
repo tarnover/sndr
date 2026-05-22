@@ -2,7 +2,7 @@ use std::env::current_dir;
 use std::fs::create_dir_all;
 #[cfg(feature = "archive")]
 use std::io::Error as IoError;
-use std::path::{self, PathBuf};
+use std::path::{self, Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use clap::ArgMatches;
@@ -220,8 +220,23 @@ impl<'a> Download<'a> {
         main_matcher: &MainMatcher,
         file: bool,
     ) -> PathBuf {
+        // Sanitize the server-provided file name to its bare basename. A
+        // malicious uploader can set the metadata filename to an absolute path
+        // (e.g. /etc/passwd) or one containing `..` segments, which would
+        // otherwise escape the user's chosen output directory via PathBuf::join.
+        let safe_name = Path::new(name_hint)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .filter(|n| !n.is_empty() && *n != "." && *n != "..")
+            .unwrap_or_else(|| {
+                quit_error_msg(
+                    "remote file name is invalid or unsafe, refusing to download",
+                    ErrorHints::default(),
+                )
+            });
+
         // Select the path to use
-        let mut target = Self::select_path(&target, name_hint);
+        let mut target = Self::select_path(&target, safe_name);
 
         // Use the parent directory, if we don't want a file
         if !file {

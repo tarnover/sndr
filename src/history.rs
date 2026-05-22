@@ -55,17 +55,17 @@ impl History {
         history.autosave = Some(path);
 
         // Make sure the file version is supported
-        if history.version.is_none() {
-            print_warning("History file has no version, ignoring");
-            history.version = Some(crate_version!().into());
-        } else {
-            // Get the version number from the file
-            let version = history.version.as_ref().unwrap();
-
-            if let Ok(true) = version_compare::compare_to(version, VERSION_MIN, Cmp::Lt) {
-                print_warning("history file version is too old, ignoring");
-            } else if let Ok(true) = version_compare::compare_to(version, VERSION_MAX, Cmp::Gt) {
-                print_warning("history file has an unknown version, ignoring");
+        match history.version.as_ref() {
+            None => {
+                print_warning("History file has no version, ignoring");
+                history.version = Some(crate_version!().into());
+            }
+            Some(version) => {
+                if let Ok(true) = version_compare::compare_to(version, VERSION_MIN, Cmp::Lt) {
+                    print_warning("history file version is too old, ignoring");
+                } else if let Ok(true) = version_compare::compare_to(version, VERSION_MAX, Cmp::Gt) {
+                    print_warning("history file has an unknown version, ignoring");
+                }
             }
         }
 
@@ -108,23 +108,38 @@ impl History {
             fs::create_dir_all(parent)?;
         }
 
-        // Set file permissions on unix based systems
+        // Build the data to write to a file
+        let data = toml::to_string(self)?;
+
+        // Write the file, enforcing user-only (0o600) permissions on Unix on
+        // every save. The history file contains share secrets and owner
+        // tokens; relying on permissions set only at first-create time would
+        // miss the case where the file was created by something else with
+        // looser permissions.
         #[cfg(unix)]
         {
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(path)
+                .map_err(SaveError::Write)?;
+
+            // If the file existed already, force-restore restrictive
+            // permissions: the mode flag on OpenOptions only applies on create.
             use std::fs::Permissions;
             use std::os::unix::fs::PermissionsExt;
+            file.set_permissions(Permissions::from_mode(0o600))
+                .map_err(SaveError::SetPermissions)?;
 
-            if !path.exists() {
-                let file = fs::File::create(path).map_err(SaveError::Write)?;
-
-                // Set Read/Write permissions for the user
-                file.set_permissions(Permissions::from_mode(0o600))
-                    .map_err(SaveError::SetPermissions)?;
-            }
+            file.write_all(data.as_bytes()).map_err(SaveError::Write)?;
         }
 
-        // Build the data and write to a file
-        let data = toml::to_string(self)?;
+        #[cfg(not(unix))]
         fs::write(&path, data)?;
 
         // There are no new changes, set the flag
@@ -184,11 +199,12 @@ impl History {
             self.files.remove(*i);
         }
 
-        // Set the changed flag, and return
-        if expired_indices.is_empty() {
+        // Set the changed flag if something was actually removed, and return
+        let removed = !expired_indices.is_empty();
+        if removed {
             self.changed = true;
         }
-        !expired_indices.is_empty()
+        removed
     }
 
     /// Remove a file by the given URL.
