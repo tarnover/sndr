@@ -4,9 +4,9 @@ use ffsend_api::client::{ClientConfig, ClientConfigBuilder};
 
 use crate::cmd::matcher::MainMatcher;
 
-/// Create a client configuration for ffsend actions.
+/// Create a client configuration for sndr actions.
 ///
-/// A client configuration allows you to build a client, which must be passed to ffsend API
+/// A client configuration allows you to build a client, which must be passed to sndr API
 /// actions.
 // TODO: properly handle errors, do not unwrap
 pub fn create_config(matcher_main: &MainMatcher) -> ClientConfig {

@@ -109,12 +109,12 @@ impl<'a: 'b, 'b> UploadMatcher<'a> {
     /// Check whether to archive the file to upload.
     #[cfg(feature = "archive")]
     pub fn archive(&self) -> bool {
-        self.matches.is_present("archive") || env_var_present("FFSEND_ARCHIVE")
+        self.matches.is_present("archive") || env_var_present("SNDR_ARCHIVE")
     }
 
     /// Check whether to open the file URL in the user's browser.
     pub fn open(&self) -> bool {
-        self.matches.is_present("open") || env_var_present("FFSEND_OPEN")
+        self.matches.is_present("open") || env_var_present("SNDR_OPEN")
     }
 
     /// Check whether to to delete local files after uploading.
@@ -126,8 +126,8 @@ impl<'a: 'b, 'b> UploadMatcher<'a> {
     #[cfg(feature = "clipboard")]
     pub fn copy(&self) -> Option<CopyMode> {
         // Get the options
-        let copy = self.matches.is_present("copy") || env_var_present("FFSEND_COPY");
-        let copy_cmd = self.matches.is_present("copy-cmd") || env_var_present("FFSEND_COPY_CMD");
+        let copy = self.matches.is_present("copy") || env_var_present("SNDR_COPY");
+        let copy_cmd = self.matches.is_present("copy-cmd") || env_var_present("SNDR_COPY_CMD");
 
         // Return the corresponding copy mode
         if copy_cmd {
@@ -166,7 +166,7 @@ pub enum CopyMode {
     /// Copy the public share link.
     Url,
 
-    /// Copy an ffsend download command.
+    /// Copy a sndr download command.
     DownloadCmd,
 }
 

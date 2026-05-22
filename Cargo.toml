@@ -1,17 +1,17 @@
 [package]
-name = "ffsend"
+name = "sndr"
 version = "0.2.77"
 rust-version = "1.63.0"
-authors = ["Tim Visee <3a4fb3964f@sinenomine.email>"]
+authors = ["Tim Visee <3a4fb3964f@sinenomine.email>", "tarnover contributors"]
 license = "GPL-3.0"
 readme = "README.md"
-homepage = "https://timvisee.com/projects/ffsend"
-repository = "https://gitlab.com/timvisee/ffsend"
+homepage = "https://github.com/tarnover/sndr"
+repository = "https://github.com/tarnover/sndr"
 description = """\
     Easily and securely share files from the command line.\n\
-    A fully featured Send client.\
+    A fully featured Send client (formerly ffsend, rebranded by tarnover).\
 """
-keywords = ["send", "firefox", "cli"]
+keywords = ["send", "share", "cli"]
 categories = [
     "authentication",
     "command-line-interface",
@@ -47,11 +47,10 @@ An optional password may be specified, and a default file lifetime of 1 \
 remain online forever. This provides a secure platform to share your files."""
 priority = "standard"
 license-file = ["LICENSE", "3"]
-depends = "$auto, libssl1.1, ca-certificates, xclip"
-maintainer-scripts = "pkg/deb"
+depends = "$auto, ca-certificates, xclip"
 
 [[bin]]
-name = "ffsend"
+name = "sndr"
 path = "src/main.rs"
 
 [features]

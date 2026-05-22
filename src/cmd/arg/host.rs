@@ -20,7 +20,7 @@ impl CmdArg for ArgHost {
             .short("h")
             .value_name("URL")
             .default_value("https://snd.dx.pe/")
-            .env("FFSEND_HOST")
+            .env("SNDR_HOST")
             .hide_env_values(true)
             .help("The remote host to upload to")
     }

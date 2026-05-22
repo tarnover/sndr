@@ -18,7 +18,7 @@ impl CmdArg for ArgApi {
             .long("api")
             .short("A")
             .value_name("VERSION")
-            .env("FFSEND_API")
+            .env("SNDR_API")
             .hide_env_values(true)
             .global(true)
             .help("Server API version to use, '-' to lookup")

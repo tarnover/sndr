@@ -77,7 +77,7 @@ impl CmdUpload {
                         .long("copy-cmd")
                         .alias("copy-command")
                         .short("C")
-                        .help("Copy the ffsend download command to your clipboard")
+                        .help("Copy the sndr download command to your clipboard")
                         .conflicts_with("copy"),
                 );
         }
