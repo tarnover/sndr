@@ -1,0 +1,92 @@
+name: Publish to crates.io
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g. v0.3.0). Must match the version in Cargo.toml.'
+        required: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    name: cargo publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable (pinned)
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Verify tag matches Cargo.toml version
+        run: |
+          TAG="${{ github.event.inputs.tag || github.event.release.tag_name }}"
+          # Strip leading "v" if present, e.g. v0.3.0 -> 0.3.0
+          TAG_VERSION="${TAG#v}"
+          CRATE_VERSION=$(cargo metadata --no-deps --format-version=1 \
+            | jq -r '.packages[] | select(.name == "sndr") | .version')
+          echo "Tag version: $TAG_VERSION"
+          echo "Crate version: $CRATE_VERSION"
+          if [ "$TAG_VERSION" != "$CRATE_VERSION" ]; then
+            echo "::error::Tag '$TAG' does not match Cargo.toml version '$CRATE_VERSION'"
+            exit 1
+          fi
+
+      - name: Publish sndr to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -e
+          VERSION=$(cargo metadata --no-deps --format-version=1 \
+            | jq -r '.packages[] | select(.name == "sndr") | .version')
+          echo "Publishing sndr v${VERSION}..."
+
+          # Check whether this version is already on crates.io. cargo search
+          # is fast enough and avoids hitting the publish error path for
+          # already-uploaded versions (the workflow may be re-run after a
+          # transient failure).
+          PUBLISHED=$(cargo search sndr --limit 1 2>/dev/null \
+            | grep "^sndr " | sed 's/.*= "\(.*\)".*/\1/' || true)
+          if [ "$PUBLISHED" = "$VERSION" ]; then
+            echo "sndr v${VERSION} is already on crates.io — skipping publish"
+            exit 0
+          fi
+
+          # Capture output so we can also tolerate the "already exists on
+          # crates.io" race-condition path that comes back from cargo when
+          # two publishes overlap.
+          set +e
+          OUTPUT=$(cargo publish 2>&1)
+          STATUS=$?
+          set -e
+          echo "$OUTPUT"
+
+          if [ $STATUS -eq 0 ]; then
+            echo "✓ Published sndr v${VERSION}"
+            exit 0
+          fi
+
+          if echo "$OUTPUT" | grep -qE "already uploaded|already exists on crates\.io"; then
+            echo "✓ sndr v${VERSION} was already published — treating as success"
+            exit 0
+          fi
+
+          echo "::error::Failed to publish sndr v${VERSION}"
+          exit 1

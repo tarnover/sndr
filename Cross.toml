@@ -1,0 +1,26 @@
+# Configuration for cross-rs (https://github.com/cross-rs/cross).
+#
+# Used by the release-binaries workflow for the Linux aarch64-gnu and
+# musl targets. The default cross images already ship the C toolchain
+# that ring's build script needs; no extra pre-build steps are needed.
+#
+# We pass through the LTO/codegen-units env vars set by the workflow so
+# we can use thin LTO on cross builds (full LTO can OOM the runner).
+
+[build.env]
+passthrough = [
+    "CARGO_PROFILE_RELEASE_LTO",
+    "CARGO_PROFILE_RELEASE_CODEGEN_UNITS",
+]
+
+# Musl targets need pkg-config to find the cross-compiled
+# libraries that ring's build script links against.
+[target.x86_64-unknown-linux-musl]
+pre-build = [
+    "apt-get update && apt-get install -y --no-install-recommends pkg-config",
+]
+
+[target.aarch64-unknown-linux-musl]
+pre-build = [
+    "apt-get update && apt-get install -y --no-install-recommends pkg-config",
+]

@@ -1,0 +1,238 @@
+name: Release Binaries
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (e.g. v0.3.0)'
+        required: true
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ---- Linux ----
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: false
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            use_cross: true
+          # Static musl binaries — distro-independent. Useful for
+          # dropping sndr into a minimal container or onto an old box.
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            use_cross: true
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            use_cross: true
+
+          # ---- macOS ----
+          # Both targets cross-compile from an Apple Silicon runner. The
+          # macOS SDK on macos-latest already ships both architectures, so
+          # we don't need a separate Intel runner (and the old macos-13
+          # Intel image has been retired by GitHub Actions).
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            use_cross: false
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            use_cross: false
+
+          # ---- Windows ----
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            use_cross: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable (pinned)
+        with:
+          toolchain: stable
+          targets: ${{ matrix.target }}
+
+      - name: Install cross (Linux cross builds)
+        if: matrix.use_cross
+        run: cargo install cross --locked --version 0.2.5
+
+      - name: Cache cargo
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Build binary
+        shell: bash
+        run: |
+          # Thin LTO on cross builds — full LTO can OOM the runner during link.
+          if [ "${{ matrix.use_cross }}" = "true" ]; then
+            export CARGO_PROFILE_RELEASE_LTO=thin
+            export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=4
+            cross build --release --target ${{ matrix.target }} -j2
+          else
+            cargo build --release --target ${{ matrix.target }} -j2
+          fi
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ARCHIVE="sndr-${VERSION}-${{ matrix.target }}.tar.gz"
+          mkdir -p staging
+          cp "target/${{ matrix.target }}/release/sndr" staging/
+          cp LICENSE README.md staging/
+          tar czf "${ARCHIVE}" -C staging .
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ARCHIVE="sndr-${VERSION}-${{ matrix.target }}.zip"
+          mkdir -p staging
+          cp "target/${{ matrix.target }}/release/sndr.exe" staging/
+          cp LICENSE README.md staging/
+          (cd staging && 7z a "../${ARCHIVE}" ./*)
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: binary-${{ matrix.target }}
+          path: ${{ env.ARCHIVE }}
+
+  publish-release:
+    name: Sign + upload to release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: artifacts
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@e1523de7571e31dbe865fd2e80c5c7c23ae71eb4 # v3.4.0
+        with:
+          cosign-release: 'v2.2.3'
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum ./* > checksums.txt
+          cat checksums.txt
+
+      - name: Sign artifacts with cosign
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cd artifacts
+          for file in *.tar.gz *.zip; do
+            [ -f "$file" ] || continue
+            echo "Signing $file..."
+            cosign sign-blob --yes "$file" \
+              --output-signature "${file}.sig" \
+              --output-certificate "${file}.pem"
+          done
+          # Sign the checksums file too — verifying it lets users trust the
+          # archive sha256s without needing each individual .sig/.pem.
+          cosign sign-blob --yes checksums.txt \
+            --output-signature checksums.txt.sig \
+            --output-certificate checksums.txt.pem
+
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: artifacts/*
+          append_body: true
+          body: |
+            ## Pre-built binaries
+
+            Static, multi-platform builds of `sndr` produced by GitHub Actions.
+
+            ### Targets
+
+            | Target                          | Notes                        |
+            | :------------------------------ | :--------------------------- |
+            | `x86_64-unknown-linux-gnu`      | Linux x64, glibc             |
+            | `aarch64-unknown-linux-gnu`     | Linux ARM64, glibc           |
+            | `x86_64-unknown-linux-musl`     | Linux x64, fully static      |
+            | `aarch64-unknown-linux-musl`    | Linux ARM64, fully static    |
+            | `x86_64-apple-darwin`           | macOS Intel                  |
+            | `aarch64-apple-darwin`          | macOS Apple Silicon          |
+            | `x86_64-pc-windows-msvc`        | Windows x64                  |
+
+            ### Quick install
+
+            ```bash
+            # Linux / macOS
+            curl -fL https://github.com/tarnover/sndr/releases/download/${{ steps.tag.outputs.tag }}/sndr-${{ steps.tag.outputs.tag }}-$(uname -m)-unknown-linux-gnu.tar.gz | tar -xz
+            sudo mv sndr /usr/local/bin/
+            ```
+
+            Or build from source (always available):
+
+            ```bash
+            cargo install --git https://github.com/tarnover/sndr.git --locked
+            ```
+
+            ### Verification
+
+            Each archive is signed with [Sigstore cosign](https://docs.sigstore.dev/)
+            via GitHub OIDC. Verify a downloaded archive with:
+
+            ```bash
+            cosign verify-blob \
+              --certificate sndr-*.pem \
+              --signature sndr-*.sig \
+              --certificate-identity-regexp="https://github.com/tarnover/sndr" \
+              --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+              sndr-*.tar.gz
+            ```
+
+            SHA-256 checksums of all archives are in `checksums.txt` (also signed).
