@@ -1,6 +1,6 @@
 [package]
 name = "sndr"
-version = "0.2.77"
+version = "0.3.0"
 rust-version = "1.63.0"
 authors = ["Tim Visee <3a4fb3964f@sinenomine.email>", "tarnover contributors"]
 license = "GPL-3.0"
