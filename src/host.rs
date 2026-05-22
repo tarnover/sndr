@@ -1,4 +1,13 @@
 use ffsend_api::url::{ParseError, Url};
+use lazy_static::lazy_static;
+use regex::Regex;
+
+lazy_static! {
+    /// Matches the short share path used by tarnover/send: `/dl/<id>` or
+    /// `/dl/<id>/`. Captured group 1 is the file ID.
+    static ref SHORT_SHARE_PATH: Regex =
+        Regex::new(r"^/dl/([[:alnum:]]{8,}={0,3})/?$").unwrap();
+}
 
 /// Parse the given host string, into an URL.
 pub fn parse_host(host: &str) -> Result<Url, HostError> {
@@ -11,7 +20,7 @@ pub fn parse_host(host: &str) -> Result<Url, HostError> {
     }
 
     // Parse the URL, and map the errors
-    Url::parse(host).map_err(|err| match err {
+    let url = Url::parse(host).map_err(|err| match err {
         ParseError::EmptyHost => HostError::Empty,
         ParseError::InvalidPort => HostError::Port,
         ParseError::InvalidIpv4Address => HostError::Ipv4,
@@ -19,7 +28,23 @@ pub fn parse_host(host: &str) -> Result<Url, HostError> {
         ParseError::InvalidDomainCharacter => HostError::DomainCharacter,
         ParseError::RelativeUrlWithoutBase => HostError::NoBase,
         err => HostError::Other(err),
-    })
+    })?;
+
+    Ok(normalize_share_path(url))
+}
+
+/// Rewrite the short share path `/dl/<id>` produced by tarnover/send back to
+/// the legacy `/download/<id>` form. The bundled `ffsend-api` (v0.7.3) only
+/// recognises the legacy path; rewriting on input lets users paste short URLs
+/// without breaking compatibility with upstream Send servers (which still
+/// emit the legacy path verbatim and thus go through this function unchanged).
+pub fn normalize_share_path(mut url: Url) -> Url {
+    let path = url.path().to_string();
+    if let Some(caps) = SHORT_SHARE_PATH.captures(&path) {
+        let id = &caps[1];
+        url.set_path(&format!("/download/{}/", id));
+    }
+    url
 }
 
 /// An error that has occurred while parsing a host.

@@ -1102,8 +1102,10 @@ pub fn follow_url(client: &Client, url: &Url) -> Result<Url, FollowError> {
         .map_err(FollowError::Request)?;
     ensure_success(&response)?;
 
-    // Obtain the final URL
-    Ok(response.url().clone())
+    // Obtain the final URL, normalizing tarnover/send's short share path so
+    // a server-side 301 from /download/<id> back to /dl/<id> doesn't undo
+    // the matcher-level normalization before RemoteFile::parse_url is called.
+    Ok(crate::host::normalize_share_path(response.url().clone()))
 }
 
 /// URL following error.
