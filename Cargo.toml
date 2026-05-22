@@ -95,6 +95,19 @@ clipboard-bin = ["clipboard"]
 # Automatic using build.rs: use native clipboard crate for clipboard support
 clipboard-crate = ["clipboard"]
 
+# Build OpenSSL from source rather than linking against the system copy.
+# Used by the release-binaries workflow for cross-compiled targets, where
+# the cross images do not ship libssl-dev for the target architecture.
+# Native builds (the ubuntu/macos/windows runners) link the system OpenSSL
+# as normal and do not need this feature.
+#
+# We have to pull OpenSSL in at all because `ffsend-api 0.7.3` declares
+# its `reqwest` dependency without `default-features = false`, leaving
+# `reqwest/default-tls` (native-tls) permanently enabled in the dep graph
+# regardless of which crypto backend we select here. Same story for
+# `websocket 0.26`, which pulls in `native_tls` transitively.
+vendored-openssl = ["openssl/vendored"]
+
 [dependencies]
 chbs = "0.1.0"
 chrono = "0.4"
@@ -107,6 +120,9 @@ ffsend-api = { version = "0.7.3", default-features = false }
 fs2 = "0.4"
 lazy_static = "1.4"
 open = "2"
+# Optional; only present in the dep graph (via openssl-sys) when the
+# vendored-openssl feature flag is enabled. See the feature comment above.
+openssl = { version = "0.10", optional = true }
 openssl-probe = "0.1"
 pathdiff = "0.2"
 pbr = "1"

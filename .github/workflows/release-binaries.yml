@@ -85,11 +85,19 @@ jobs:
       - name: Build binary
         shell: bash
         run: |
-          # Thin LTO on cross builds — full LTO can OOM the runner during link.
+          # On cross-compiled targets we have to build OpenSSL from source —
+          # the cross images do not ship libssl-dev for the target arch, and
+          # ffsend-api 0.7.3 keeps reqwest/default-tls + websocket's native_tls
+          # in the dep graph regardless of which crypto backend we pick, so
+          # the openssl-sys build script runs on every target.
+          # Native runners (ubuntu/macos/windows) have libssl available and
+          # do not need this.
           if [ "${{ matrix.use_cross }}" = "true" ]; then
+            # Thin LTO on cross builds — full LTO can OOM the runner during link.
             export CARGO_PROFILE_RELEASE_LTO=thin
             export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=4
-            cross build --release --target ${{ matrix.target }} -j2
+            cross build --release --target ${{ matrix.target }} \
+              --features vendored-openssl -j2
           else
             cargo build --release --target ${{ matrix.target }} -j2
           fi
