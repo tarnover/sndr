@@ -53,7 +53,7 @@ impl<'a: 'b, 'b> DownloadMatcher<'a> {
     /// Check whether to extract an archived file.
     #[cfg(feature = "archive")]
     pub fn extract(&self) -> bool {
-        self.matches.is_present("extract") || env_var_present("FFSEND_EXTRACT")
+        self.matches.is_present("extract") || env_var_present("SNDR_EXTRACT")
     }
 }
 

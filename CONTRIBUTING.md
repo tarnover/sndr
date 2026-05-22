@@ -1,31 +1,20 @@
 # Contributing
 
-**Repository:**
-- [GitLab repository][gitlab]
-- _Mirror: [GitHub repository][github]_
+**Repository:** [github.com/tarnover/sndr][github]
 
-**Issues:** (bug reporting, feature requests, enhancements, etc.)
-- [GitLab issue board][gitlab-issues]
-- _Alternatively: [GitHub issue board][github-issues]_
+**Issues** (bug reporting, feature requests, enhancements, etc.): [issue tracker][github-issues]
 
-**Pull/merge requests:** (fixes, implemented features, etc.)
-- [GitLab merge requests][gitlab-mr]
-- _Alternatively: [GitHub pull requests][github-pr]_
+**Pull requests** (fixes, implemented features, etc.): [pull requests][github-pr]
 
-
-
-Contributions to the `ffsend` project are welcome!
+Contributions to the `sndr` project are welcome!
 When contributing new features, alternative implementations or bigger
-improvements, please first discuss the change you wish to make via an issue
-or email.
+improvements, please first discuss the change you wish to make via an issue.
 Small changes such as fixed commands, fixed spelling or dependency updates
 are always welcome without discussion.
 
-The `ffsend` repository is primarily hosted on [GitLab][gitlab].
-[GitHub][github] hosts a mirror, for publicity and findability.
-Please open any issues or pull requests on the [GitLab][gitlab] pages if possible.
-Otherwise opening these on [GitHub][github] is fine, though they might be
-manually moved over to [GitLab][gitlab].
+If a change applies equally well to upstream
+[`timvisee/ffsend`][upstream], please also open it there so the broader
+community benefits.
 
 Please note we have a code of conduct, please follow it in all your interactions
 with the project.
@@ -36,15 +25,12 @@ with the project.
    bigger change
 2. Ensure your branch is up-to-date with the latest [`master`][branch-master]
 3. Ensure the project builds with your changes: `cargo build`
-4. Ensure the project tests succeed with your changes: `cargo test`
-5. Update the `README.md` with details of significant changes, this includes new
+4. Ensure clippy is clean: `cargo clippy --no-deps`
+5. Ensure the project tests succeed with your changes: `cargo test`
+6. Update the `README.md` with details of significant changes, this includes new
    compiler features, command-line arguments, environment variables or new
    package installation instructions.
-6. Submit your pull request.
-7. Fix any issues continuous integration might report.
-
-Additional notes:
-- Do not change version numbers, this is done by @timvisee
+7. Submit your pull request.
 
 ## Code of Conduct
 
@@ -103,7 +89,7 @@ further defined and clarified by project maintainers.
 ### Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported by contacting the project owner at 3a4fb3964f@sinenomine.email. All
+reported by contacting the project owner at jascha@tarnover.com. All
 complaints will be reviewed and investigated and will result in a response that
 is deemed necessary and appropriate to the circumstances. The project team is
 obligated to maintain confidentiality with regard to the reporter of an incident.
@@ -121,12 +107,10 @@ available at [https://contributor-covenant.org/version/1/4][coc-version]
 This project is released under the GNU GPL-3.0 license.
 Check out the [LICENSE](LICENSE) file for more information.
 
-[branch-master]: https://gitlab.com/timvisee/ffsend/tree/master
-[gitlab]: https://gitlab.com/timvisee/ffsend
-[gitlab-issues]: https://gitlab.com/timvisee/ffsend/issues
-[gitlab-mr]: https://gitlab.com/timvisee/ffsend/merge_requests
-[github]: https://github.com/timvisee/ffsend
-[github-issues]: https://github.com/timvisee/ffsend/issues
-[github-pr]: https://github.com/timvisee/ffsend/pulls
+[branch-master]: https://github.com/tarnover/sndr/tree/master
+[github]: https://github.com/tarnover/sndr
+[github-issues]: https://github.com/tarnover/sndr/issues
+[github-pr]: https://github.com/tarnover/sndr/pulls
+[upstream]: https://github.com/timvisee/ffsend
 [coc-homepage]: https://contributor-covenant.org
 [coc-version]: https://contributor-covenant.org/version/1/4/

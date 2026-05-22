@@ -182,7 +182,7 @@ impl<'a> Upload<'a> {
                             );
                         } else {
                             // Unable to derive file name from paths, generate random
-                            file_name = Some(format!("ffsend-archive-{}", rand_alphanum_string(8)));
+                            file_name = Some(format!("sndr-archive-{}", rand_alphanum_string(8)));
                         }
                     }
 
@@ -239,7 +239,7 @@ impl<'a> Upload<'a> {
         {
             if paths.len() > 1 {
                 quit_error_msg(
-                    "uploading multiple files is not supported, ffsend must be compiled with 'archive' feature for this",
+                    "uploading multiple files is not supported, sndr must be compiled with 'archive' feature for this",
                     ErrorHintsBuilder::default()
                         .verbose(false)
                         .build()
@@ -248,7 +248,7 @@ impl<'a> Upload<'a> {
             }
             if path.is_dir() {
                 quit_error_msg(
-                    "uploading a directory is not supported, ffsend must be compiled with 'archive' feature for this",
+                    "uploading a directory is not supported, sndr must be compiled with 'archive' feature for this",
                     ErrorHintsBuilder::default()
                         .verbose(false)
                         .build()
@@ -542,13 +542,13 @@ impl<'a> Upload<'a> {
 ///
 /// If the following paths are given:
 ///
-/// - `/home/user/git/ffsend/src`
-/// - `/home/user/git/ffsend/src/main.rs`
-/// - `/home/user/git/ffsend/Cargo.toml`
+/// - `/home/user/git/sndr/src`
+/// - `/home/user/git/sndr/src/main.rs`
+/// - `/home/user/git/sndr/Cargo.toml`
 ///
 /// The following is returned:
 ///
-/// `/home/user/git/ffsend`
+/// `/home/user/git/sndr`
 #[cfg(feature = "archive")]
 fn shared_dir(paths: Vec<PathBuf>) -> Option<PathBuf> {
     // Any path must be given

@@ -1,7 +1,14 @@
 FROM alpine:latest
-LABEL maintainer="Tim Visée <3a4fb3964f@sinenomine.email>"
+LABEL org.opencontainers.image.source="https://github.com/tarnover/sndr"
+LABEL org.opencontainers.image.description="sndr - command-line Send client"
+LABEL org.opencontainers.image.licenses="GPL-3.0-only"
 
-COPY ./ffsend /
+# Expects a statically-linked sndr binary to be present alongside this
+# Dockerfile at build time. Build with:
+#   cargo build --release -j2
+#   cp target/release/sndr pkg/docker/sndr
+#   docker build -t sndr pkg/docker
+COPY ./sndr /
 
 WORKDIR /data/
-ENTRYPOINT ["/ffsend"]
+ENTRYPOINT ["/sndr"]

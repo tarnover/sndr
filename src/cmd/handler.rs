@@ -101,7 +101,7 @@ impl<'a: 'b, 'b> Handler<'a> {
                     .help("Request timeout (0 to disable)")
                     .default_value(&DEFAULT_TIMEOUT)
                     .hide_default_value(true)
-                    .env("FFSEND_TIMEOUT")
+                    .env("SNDR_TIMEOUT")
                     .hide_env_values(true)
                     .validator(|arg| {
                         parse_duration(&arg).map(drop).map_err(|_| {
@@ -126,7 +126,7 @@ impl<'a: 'b, 'b> Handler<'a> {
                     .help("Transfer timeout (0 to disable)")
                     .default_value(&DEFAULT_TRANSFER_TIMEOUT)
                     .hide_default_value(true)
-                    .env("FFSEND_TRANSFER_TIMEOUT")
+                    .env("SNDR_TRANSFER_TIMEOUT")
                     .hide_env_values(true)
                     .validator(|arg| {
                         parse_duration(&arg).map(drop).map_err(|_| {
@@ -176,7 +176,7 @@ impl<'a: 'b, 'b> Handler<'a> {
                     .help("Use the specified history file")
                     .default_value(&DEFAULT_HISTORY_FILE)
                     .hide_default_value(true)
-                    .env("FFSEND_HISTORY")
+                    .env("SNDR_HISTORY")
                     .hide_env_values(true),
             )
             .arg(
@@ -220,7 +220,7 @@ impl<'a: 'b, 'b> Handler<'a> {
     /// If no subcommand could be inferred, the `args` list leaves unchanged.
     /// See `crate::config::INFER_COMMANDS` for a list of commands.
     ///
-    /// When the `ffsend` binary is called with such a name, the corresponding subcommand is
+    /// When the `sndr` binary is called with such a name, the corresponding subcommand is
     /// automatically inserted as argument. This also works when calling binaries through symbolic
     /// or hard links.
     #[cfg(feature = "infer-command")]

@@ -17,7 +17,7 @@ impl CmdArg for ArgBasicAuth {
             .alias("http-basic-authentication")
             .alias("http-basic-auth")
             .value_name("USER:PASSWORD")
-            .env("FFSEND_BASIC_AUTH")
+            .env("SNDR_BASIC_AUTH")
             .hide_env_values(true)
             .global(true)
             .help("Protected proxy HTTP basic authentication credentials (not FxA)")

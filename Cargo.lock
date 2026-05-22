@@ -714,40 +714,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
 
 [[package]]
-name = "ffsend"
-version = "0.2.77"
-dependencies = [
- "chbs",
- "chrono",
- "clap",
- "clipboard",
- "colored",
- "derive_builder 0.10.2",
- "directories",
- "failure",
- "ffsend-api",
- "fs2",
- "lazy_static",
- "open",
- "openssl-probe 0.1.6",
- "pathdiff",
- "pbr",
- "prettytable-rs",
- "qr2term",
- "rand 0.8.6",
- "regex",
- "rpassword",
- "serde",
- "serde_derive",
- "tar",
- "tempfile",
- "toml",
- "urlshortener",
- "version-compare 0.1.1",
- "which",
-]
-
-[[package]]
 name = "ffsend-api"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2678,6 +2644,40 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
+
+[[package]]
+name = "sndr"
+version = "0.2.77"
+dependencies = [
+ "chbs",
+ "chrono",
+ "clap",
+ "clipboard",
+ "colored",
+ "derive_builder 0.10.2",
+ "directories",
+ "failure",
+ "ffsend-api",
+ "fs2",
+ "lazy_static",
+ "open",
+ "openssl-probe 0.1.6",
+ "pathdiff",
+ "pbr",
+ "prettytable-rs",
+ "qr2term",
+ "rand 0.8.6",
+ "regex",
+ "rpassword",
+ "serde",
+ "serde_derive",
+ "tar",
+ "tempfile",
+ "toml",
+ "urlshortener",
+ "version-compare 0.1.1",
+ "which",
+]
 
 [[package]]
 name = "socket2"
