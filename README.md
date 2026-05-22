@@ -1,489 +1,353 @@
 # sndr
 
 [![Latest release][release-badge]][release-link]
-[![Project license][repo-license-badge]](LICENSE)
+[![License][license-badge]](LICENSE)
 
 [release-badge]: https://img.shields.io/github/v/tag/tarnover/sndr
 [release-link]: https://github.com/tarnover/sndr/tags
-[repo-license-badge]: https://img.shields.io/github/license/tarnover/sndr.svg
+[license-badge]: https://img.shields.io/github/license/tarnover/sndr.svg
 
-Easily and securely share files and directories from the command line through
-a safe, private and encrypted link. Files are encrypted client-side before
-upload; the decryption key never leaves the local machine unless explicitly
-shared in the URL fragment. Anyone with the link can fetch and decrypt; the
-server only ever sees ciphertext.
+A command-line client for the **Send** end-to-end-encrypted file-sharing
+protocol. Upload a file, hand someone a one-shot link, walk away. The
+server stores ciphertext, the recipient holds the only key, the share
+expires on its own.
 
-`sndr` is a maintained, security-hardened fork of
-[`timvisee/ffsend`][timvisee-ffsend], itself derived from work on
-[Mozilla's Firefox Send][mozilla-send] (discontinued in 2020). The fork
-lineage:
-
-```
-mozilla/send  →  timvisee/ffsend  →  tarnover/sndr (this repo, rebranded)
+```bash
+$ sndr upload paper.pdf
+https://snd.dx.pe/dl/8a3f.../#xY7q...
 ```
 
-`sndr` speaks the same protocol as the [`tarnover/send`][tarnover-send]
-server (and any Send-compatible instance), so links produced by the server
-can be uploaded to / downloaded from with this CLI as well as the browser.
-
-## What's different in this fork
-
-- **Rebranded `ffsend` → `sndr`** — binary, crate, env vars (`SNDR_*`),
-  history path (`~/.cache/sndr/`), infer-command names (`sndrput`,
-  `sndrget`, `sndrdel`). Existing ffsend dotfiles do **not** carry over
-  — see [Migrating from ffsend](#migrating-from-ffsend).
-- **Security hardening** — sanitises the server-supplied filename before
-  joining with the user's output directory (prevents path traversal via
-  metadata), enforces `0600` on every history-file save instead of only
-  at create time, and fixes an inverted-condition bug that caused
-  `sndr history forget` and expired-entry cleanup to silently skip the
-  autosave.
-- **`tarnover/send` short-URL support** — recognises `/dl/<id>` share
-  paths and preserves the URL fragment across server-side `/download/`
-  → `/dl/` redirects (so the decryption key survives reqwest's
-  redirect-following).
-- **Default Send host** — points at `https://snd.dx.pe/` (a
-  `tarnover/send` instance) instead of the upstream default. Override
-  with `--host` or `SNDR_HOST` to use any other Send instance.
-
-Everything else — the wire protocol, file format, command-line surface,
-configuration knobs — is unchanged and remains compatible with downstream
-Send servers and tooling.
-
-[mozilla-send]: https://github.com/mozilla/send
-[timvisee-ffsend]: https://github.com/timvisee/ffsend
-[tarnover-send]: https://github.com/tarnover/send
+That URL is everything: file ID in the path, decryption key after the
+`#`. Anyone who gets it can fetch and decrypt — and only them, because
+the server never sees the key.
 
 ---
 
-## Table of contents
+## Why use this
 
-- [What it does](#what-it-does)
-- [Quick start](#quick-start)
-- [Migrating from ffsend](#migrating-from-ffsend)
-- [Requirements](#requirements)
-- [Install](#install)
-- [Build](#build)
-- [Commands](#commands)
-- [Configuration and environment](#configuration-and-environment)
-- [Scripting](#scripting)
-- [Security](#security)
-- [Contributing](#contributing)
-- [Acknowledgements](#acknowledgements)
-- [License](#license)
+- **Send a file once, securely** — the alternative is "DM you a Google
+  Drive link" (the operator holds your file forever) or "SFTP you onto
+  my box" (you need an account and a network path). `sndr` is one
+  command, no signup, no persistent footprint.
+- **Encrypted before it leaves your machine** — AES-128-GCM with a
+  random 128-bit key. The server stores opaque ciphertext.
+- **One-shot by default** — 1 download, 24-hour expiry. Configurable
+  up to 20 downloads / 7 days on most instances.
+- **Optional password** on top of the URL secret, for cases where the
+  link itself might leak.
+- **Server-shipped JavaScript is out of the loop** — `sndr` ships its
+  own implementation of the protocol, so a compromised server cannot
+  swap out the crypto layer the way it could for a browser client.
+  This is the real reason to use a CLI over the web UI for sensitive
+  transfers.
 
----
-
-## What it does
-
-`sndr` uploads a file (or directory, archived on the fly) to a Send
-instance after generating a random key and encrypting the contents locally.
-The URL it prints back to you contains the key in its fragment — the server
-never sees it. Anyone with the link can fetch and decrypt; everyone else
-sees only ciphertext.
-
-Each share has a configurable expiry (default 24 hours, up to seven days on
-most instances) and a download counter (default 1, up to 20). When either
-runs out the ciphertext is deleted. Owners can password-protect a share,
-change its download limit, or delete it themselves.
-
-Features:
-
-- Fully featured, scriptable command-line tool
-- Upload and download files and directories, always encrypted on the client
-- Optional password protection, passphrase generation, and configurable
-  download limits
-- File and directory archiving and extraction
-- Share-URL shortener and QR code rendering
-- Supports Send v3 (current) and v2
-- Local history for managing your own shares
-- Inspect, change parameters, or delete a share
-- Streaming encryption/upload/download — low memory footprint, suitable
-  for large files
-- Designed for unattended use in scripts
-
----
-
-## Quick start
-
-```bash
-# Simple upload
-$ sndr upload my-file.txt
-https://snd.dx.pe/dl/<id>/#<key>
-
-# Advanced upload:
-# - download limit of 1
-# - expiry of 5 minutes
-# - password-encrypt
-# - archive (handy for directories)
-# - copy the link to the clipboard
-# - open the link in your browser
-$ sndr upload --downloads 1 --expiry-time 5m \
-    --password --archive --copy --open my-file.txt
-Password: ******
-https://snd.dx.pe/dl/<id>/#<key>
-
-# Upload to a custom Send host
-$ sndr u -h https://example.com/ my-file.txt
-https://example.com/dl/<id>/#<key>
-
-# Download
-$ sndr download https://snd.dx.pe/dl/<id>/#<key>
-```
-
-Inspect remote files:
-
-```bash
-$ sndr exists https://snd.dx.pe/dl/<id>/#<key>
-Exists: true
-
-$ sndr info https://snd.dx.pe/dl/<id>/#<key>
-ID:         b087066715
-Downloads:  0 of 5
-Expiry:     18h2m (64928s)
-```
-
-Manage your shares:
-
-```bash
-# View your share history
-$ sndr history
-#  LINK                                  EXPIRE
-1  https://snd.dx.pe/dl/<id>/#<key>     23h57m
-2  https://example.com/dl/<id>/#<key>   37m30s
-
-# Set or change a password
-$ sndr password https://snd.dx.pe/dl/<id>/#<key>
-Password: ******
-
-# Delete a share
-$ sndr delete https://snd.dx.pe/dl/<id>/#<key>
-```
-
-Use `--help`, the `help` subcommand, or see [Commands](#commands) for the
-full list.
-
----
-
-## Migrating from ffsend
-
-This is a full rebrand: no automatic migration runs at startup. If you are
-coming from `ffsend`, here is what you need to do.
-
-| What changes      | Old (`ffsend`)              | New (`sndr`)                 |
-| :---------------- | :-------------------------- | :--------------------------- |
-| Binary name       | `ffsend`                    | `sndr`                       |
-| Env-var prefix    | `FFSEND_*`                  | `SNDR_*`                     |
-| History file      | `~/.cache/ffsend/history.toml` | `~/.cache/sndr/history.toml` |
-| Infer-command     | `ffput` / `ffget` / `ffdel` | `sndrput` / `sndrget` / `sndrdel` |
-| Default host      | `https://send.vis.ee/`      | `https://snd.dx.pe/`         |
-
-To carry your existing share history over once:
-
-```bash
-mkdir -p ~/.cache/sndr
-cp ~/.cache/ffsend/history.toml ~/.cache/sndr/history.toml
-```
-
-To rename `FFSEND_*` env vars in your shell rc:
-
-```bash
-sed -i 's/FFSEND_/SNDR_/g' ~/.bashrc ~/.zshrc 2>/dev/null
-```
-
-You can keep `ffsend` installed alongside `sndr`; the two do not share
-state once the history file is copied.
-
----
-
-## Requirements
-
-- Linux, macOS, Windows, FreeBSD, or Android (other BSDs may work).
-- A terminal and an internet connection.
-- Linux:
-  - OpenSSL and CA certificates
-    (Debian/Ubuntu: `apt install openssl ca-certificates`).
-  - Optional `xclip` or `xsel` for clipboard support.
-- macOS / Windows:
-  - Optional OpenSSL with the `crypto-openssl` build feature
-    (the default `crypto-ring` backend needs no extra system packages).
-- FreeBSD:
-  - `pkg install openssl ca_root_nss` (and `xclip xsel-conrad` for the
-    clipboard).
-- Android:
-  - Install via [Termux][termux].
+It's not the right tool for everything. If you need persistent
+hosting, multi-recipient access control, or files larger than a few
+hundred MB on a public instance, use something else.
 
 ---
 
 ## Install
 
-`sndr` is a young fork and is not yet published to crates.io or any
-distro package index. Install from this repository:
+`sndr` is a young fork and is not yet packaged on crates.io or any
+distro. Install from source:
 
 ```bash
-# Install with cargo, straight from this fork
 cargo install --git https://github.com/tarnover/sndr.git --locked
-
 sndr --help
 ```
 
-Or clone and build manually — see [Build](#build).
+Requires Rust `1.63` or newer. On Linux, you also want `ca-certificates`
+(usually already installed), and `xclip` or `xsel` if you want
+`--copy` to work. No system OpenSSL needed — the default crypto
+backend is pure Rust.
 
-If you previously installed the upstream `timvisee/ffsend` binary (via
-snap, AUR, Homebrew, MacPorts, Nix, Fedora, Alpine, FreeBSD ports,
-Termux, or Docker), those packages still install the `ffsend` binary
-under the upstream name and do **not** include this fork's hardening,
-short-URL support, or `tarnover` defaults. They can coexist with
-`sndr` — different binary names, different config paths.
+For a hands-on build (cloning, debug build, testing locally),
+see [Build](#build) below.
 
 ---
 
-## Build
+## Usage
 
-Build requirements:
-
-- [Rust][rust] `1.63` (MSRV) or newer — install with [rustup][rustup].
-- A C toolchain plus `pkg-config` and OpenSSL/LibreSSL headers when using
-  the `crypto-openssl` feature; the default `crypto-ring` backend is
-  pure-Rust and needs no system OpenSSL.
-- Debian/Ubuntu example:
-  ```bash
-  sudo apt install build-essential cmake pkg-config libssl-dev
-  ```
-
-Build the project:
+### Upload
 
 ```bash
-# Clone this fork
-git clone https://github.com/tarnover/sndr.git
-cd sndr
+# The simple case
+sndr upload paper.pdf
 
-# Debug build
-cargo build -j2
+# 5 downloads, 1 hour expiry, password-protect, copy URL to clipboard
+sndr upload --downloads 5 --expiry-time 1h --password --copy paper.pdf
 
-# Release build
-cargo build --release -j2
+# Upload a directory (auto-tars it)
+sndr upload --archive ~/photos
 
-# Install into ~/.cargo/bin
-cargo install --path . -f
+# Read from stdin
+tar c some/dir | sndr upload --name backup.tar -
+
+# Different host
+sndr upload --host https://send.example.com/ paper.pdf
 ```
 
-### Feature flags
-
-| Feature          | Default | Description                                       |
-| :--------------- | :-----: | :------------------------------------------------ |
-| `send2`          |         | Support for Send v2 servers                       |
-| `send3`          |   ✓    | Support for Send v3 servers                       |
-| `crypto-ring`    |   ✓    | Pure-Rust crypto backend (no system OpenSSL)      |
-| `crypto-openssl` |         | OpenSSL backend                                    |
-| `clipboard`      |   ✓    | Copy share URLs to the clipboard                   |
-| `history`        |   ✓    | Local share history                                |
-| `archive`        |   ✓    | Archive directories on upload, extract on download |
-| `qrcode`         |   ✓    | Render share URLs as QR codes                      |
-| `urlshorten`     |   ✓    | Built-in URL shortener integration                 |
-| `infer-command`  |   ✓    | Honor `sndrput` / `sndrget` / `sndrdel` names      |
-| `no-color`       |         | Disable colored error/help output                  |
-
-Combine flags with `cargo install --no-default-features --features ...`.
-
-### `sndrput`, `sndrget`, `sndrdel`
-
-With the `infer-command` feature compiled in (default), symlinking the
-binary under one of these names dispatches the corresponding subcommand:
-
-| Link       | Equivalent           |
-| :--------- | :------------------- |
-| `sndrput`  | `sndr upload ...`    |
-| `sndrget`  | `sndr download ...`  |
-| `sndrdel`  | `sndr delete ...`    |
+### Receive
 
 ```bash
-ln -s "$(which sndr)" ./sndrput
-ln -s "$(which sndr)" ./sndrget
+# Download to current directory, picking the original filename
+sndr download "https://snd.dx.pe/dl/8a3f.../#xY7q..."
+
+# Download to a specific path
+sndr download -o /tmp/paper.pdf "https://snd.dx.pe/dl/8a3f.../#xY7q..."
+
+# Inspect without downloading (does not consume a download slot)
+sndr info "https://snd.dx.pe/dl/8a3f.../#xY7q..."
+sndr exists "https://snd.dx.pe/dl/8a3f.../#xY7q..."
 ```
 
-The full inferred-name table is defined in
-[`src/config.rs`](./src/config.rs) under `INFER_COMMANDS`.
+### Manage your shares
 
----
-
-## Commands
-
-| Command      | Aliases       | Description                            |
-| :----------- | :------------ | :------------------------------------- |
-| `upload`     | `u`, `up`     | Upload a file or directory             |
-| `download`   | `d`, `down`   | Download a shared file                 |
-| `info`       | `i`           | Show metadata for a share              |
-| `exists`     | `e`           | Check whether a share still exists     |
-| `parameters` | `params`      | Change download limit / expiry         |
-| `password`   | `pass`, `p`   | Set, change, or remove a share password |
-| `delete`     | `del`, `rm`   | Delete a shared file                   |
-| `history`    | `h`           | List or forget locally-tracked shares  |
-| `version`    | `v`           | Detect a Send server's API version     |
-| `debug`      | `dbg`         | Print build and runtime debug info     |
-| `generate`   | `gen`         | Generate shell completions / assets    |
-| `help`       |               | Help for a subcommand                  |
-
-Invoke `sndr help <subcommand>` for per-command flags.
-
----
-
-## Configuration and environment
-
-`sndr` reads its defaults from environment variables. Each variable maps
-to a CLI flag:
-
-| Variable                | CLI flag                       | Description                            |
-| :---------------------- | :----------------------------- | :------------------------------------- |
-| `SNDR_HISTORY`          | `--history <FILE>`             | History file path                      |
-| `SNDR_HOST`             | `--host <URL>`                 | Upload host (default `snd.dx.pe`)      |
-| `SNDR_TIMEOUT`          | `--timeout <SECONDS>`          | Request timeout (`0` to disable)       |
-| `SNDR_TRANSFER_TIMEOUT` | `--transfer-timeout <SECONDS>` | Transfer timeout (`0` to disable)      |
-| `SNDR_EXPIRY_TIME`      | `--expiry-time <SECONDS>`      | Default upload expiry                  |
-| `SNDR_DOWNLOAD_LIMIT`   | `--download-limit <DOWNLOADS>` | Default download limit                 |
-| `SNDR_API`              | `--api <VERSION>`              | Server API version (`-` to autodetect) |
-| `SNDR_BASIC_AUTH`       | `--basic-auth <USER:PASSWORD>` | Basic HTTP auth for protected proxies  |
-
-Flag-style variables (presence sets the flag — value is ignored):
-
-| Variable           | CLI flag        | Description                            |
-| :----------------- | :-------------- | :------------------------------------- |
-| `SNDR_FORCE`       | `--force`       | Skip warnings, force the action        |
-| `SNDR_NO_INTERACT` | `--no-interact` | Disable interactive prompts            |
-| `SNDR_YES`         | `--yes`         | Assume yes for prompts                 |
-| `SNDR_INCOGNITO`   | `--incognito`   | Don't record actions in local history  |
-| `SNDR_OPEN`        | `--open`        | Open the share URL after upload        |
-| `SNDR_ARCHIVE`     | `--archive`     | Archive on upload                      |
-| `SNDR_EXTRACT`     | `--extract`     | Extract on download                    |
-| `SNDR_COPY`        | `--copy`        | Copy share link to clipboard           |
-| `SNDR_COPY_CMD`    | `--copy-cmd`    | Copy a `sndr download` invocation      |
-| `SNDR_QUIET`       | `--quiet`       | Minimal output                         |
-| `SNDR_VERBOSE`     | `--verbose`     | Verbose logging                        |
-
-Build-time variables:
-
-| Variable     | Description                                                                |
-| :----------- | :------------------------------------------------------------------------- |
-| `XCLIP_PATH` | Hard-code the `xclip` binary path (with `clipboard-bin` on Linux / *BSD)   |
-| `XSEL_PATH`  | Hard-code the `xsel` binary path (with `clipboard-bin` on Linux / *BSD)    |
-
-There is no config-file support today.
-
----
-
-## Scripting
-
-`sndr` is designed for unattended use. The recipe:
-
-- Always pass `--no-interact` (`-I`) — prompts that have no default will
-  exit with an error rather than wait for a human.
-- Pair with `--yes` (`-y`) and/or `--force` (`-f`) for actions you want to
-  proceed regardless.
-- Use `--quiet` (`-q`) when capturing the share URL into a variable.
-
-Example:
+`sndr` keeps a local index of shares you've uploaded, so you can list,
+re-share, or revoke them without re-pasting URLs.
 
 ```bash
-set -e
+sndr history                        # list your active shares
+sndr password <url>                 # add or change the share password
+sndr parameters <url> --downloads 2 # change the download cap
+sndr delete <url>                   # revoke a share server-side
+sndr history forget <url>           # drop a share from local history only
+```
 
-# Upload, capture the URL
-URL=$(sndr -Iy upload -q my-file.txt)
+The history file lives at `~/.cache/sndr/history.toml` and contains
+owner tokens, so it's stored with `0600` perms. Use `--incognito`
+(or `SNDR_INCOGNITO=1`) to skip recording anything locally.
 
-# Inspect (force, no prompts)
-sndr -If info "$URL"
+---
 
-# Set a password
-sndr -I password "$URL" --password="secret"
+## Configuration
 
-# Or apply the flags globally via env vars
-export SNDR_NO_INTERACT=1 SNDR_FORCE=1 SNDR_YES=1
+Every flag has an environment variable equivalent. Set what you use
+most often in your shell rc.
 
-sndr download "$URL" --password="secret"
+| Variable                | Flag                           | Default              |
+| :---------------------- | :----------------------------- | :------------------- |
+| `SNDR_HOST`             | `--host <URL>`                 | `https://snd.dx.pe/` |
+| `SNDR_HISTORY`          | `--history <FILE>`             | `~/.cache/sndr/history.toml` |
+| `SNDR_EXPIRY_TIME`      | `--expiry-time <SECONDS>`      | 24 h                 |
+| `SNDR_DOWNLOAD_LIMIT`   | `--download-limit <N>`         | 1                    |
+| `SNDR_TIMEOUT`          | `--timeout <SECONDS>`          | 30 s                 |
+| `SNDR_TRANSFER_TIMEOUT` | `--transfer-timeout <SECONDS>` | 24 h                 |
+| `SNDR_BASIC_AUTH`       | `--basic-auth <USER:PASSWORD>` | _none_               |
+| `SNDR_API`              | `--api <VERSION>`              | autodetect           |
+
+Flag-style env vars (presence enables; the value is ignored):
+
+```
+SNDR_FORCE         SNDR_NO_INTERACT   SNDR_YES         SNDR_INCOGNITO
+SNDR_OPEN          SNDR_ARCHIVE       SNDR_EXTRACT     SNDR_COPY
+SNDR_COPY_CMD      SNDR_QUIET         SNDR_VERBOSE
+```
+
+There is no configuration file. Set env vars, or pass flags.
+
+### Per-subcommand binaries
+
+If you compile with the default `infer-command` feature, you can
+symlink the binary under one of three special names and it dispatches
+to the matching subcommand:
+
+```bash
+ln -s "$(which sndr)" /usr/local/bin/sndrput   # → sndr upload
+ln -s "$(which sndr)" /usr/local/bin/sndrget   # → sndr download
+ln -s "$(which sndr)" /usr/local/bin/sndrdel   # → sndr delete
+
+sndrput file.pdf      # equivalent to: sndr upload file.pdf
 ```
 
 ---
 
 ## Security
 
-In short: `sndr` plus a trustworthy [Send][tarnover-send] instance is safe
-for sharing sensitive files. Anyone holding the link can decrypt the
-contents, so the link itself is the secret to protect.
+### What the server sees
 
-### Client-side encryption
+- Ciphertext bytes of your file.
+- A few plaintext fields needed to route the share: file ID, nonce,
+  owner-token hash, expiry timestamp, download counter, encrypted size.
+- The IP address of every uploader and downloader.
 
-Files and metadata are encrypted with `128-bit AES-GCM` before they leave
-the machine; request authentication uses a `HMAC SHA-256` signing key.
-The server never sees plaintext. The full ceremony is documented in the
-[Send encryption notes][send-encryption].
+### What the server cannot see
 
-### What's in the URL
+- The file's contents, filename, or MIME type. All three are
+  encrypted client-side before upload.
+- The URL fragment (`#...`), which is the decryption key. HTTP does
+  not include the fragment in requests, and `sndr` is careful to
+  preserve it across redirects.
 
-The decryption secret lives in the URL fragment (`#...`), which browsers
-do not send to the server. If you open a share link in a browser, however,
-any JavaScript the server delivers can read the fragment. Mitigations:
+### Threat model in one paragraph
 
-- Prefer `sndr` over a browser for sensitive shares — there is no
-  server-shipped JavaScript in the loop.
-- Use `--password` (during upload) or the `password` subcommand to add
-  symmetric protection beyond the URL secret.
-- Host your own Send instance (e.g. [`tarnover/send`][tarnover-send]).
+`sndr` is safe to use over a hostile network: TLS protects the
+ciphertext in flight, and the operator never holds the key. It is
+also safe against a curious operator: they can see ciphertext but
+not decrypt it. It is **not** safe against a compromised operator
+who can swap the *web* client's JavaScript: when you open a share
+link in a browser, the server's JS reads the fragment and could
+exfiltrate it. `sndr` itself never runs server-supplied code, which
+is the whole reason to prefer the CLI for sensitive shares.
 
-### What this fork hardened
+The decryption key is in the URL. **Treat the URL like a password.**
+Don't post it in a public channel. Don't paste it into a service that
+keeps URL history. If you have any doubt, add `--password` so the
+recipient also needs a passphrase you send through a different
+channel.
 
-- Server-supplied filenames are reduced to their basename before being
-  joined with the user's output directory, preventing a malicious
-  uploader from writing outside the chosen destination via `..` or
-  absolute paths.
-- The history file (which contains owner tokens) is opened with
-  `0o600` on every save, and `chmod 600` is re-applied after open, so a
-  pre-existing file with looser permissions is fixed up rather than
-  preserved.
-- An inverted `changed`-flag check in `History::remove` is fixed so
-  removals (including `sndr history forget` and the auto-cleanup of
-  expired entries on download) actually persist on autosave.
-- `follow_url` preserves the URL fragment across HTTP redirects, so the
-  decryption secret survives the `tarnover/send` `/download/` → `/dl/`
-  301-redirect path.
+### Hardening this fork carries vs. upstream `ffsend`
 
-No license, warranty, or guarantee comes with this — read the [LICENSE](LICENSE).
+- Server-supplied filenames are reduced to their basename before
+  being joined with the user's output directory — a malicious
+  uploader cannot escape your target dir via `..` or absolute paths.
+- The history file is reopened with mode `0600` on every save (not
+  just at create time), defending against an attacker who pre-creates
+  the file world-readable.
+- An inverted-condition bug in `History::remove` was fixed; deletes
+  and expired-entry cleanup now persist on autosave.
+- `follow_url` preserves the URL fragment across HTTP redirects, so
+  the decryption key survives the `tarnover/send` `/download/` →
+  `/dl/` 301-redirect path.
+
+For broader Send-protocol crypto details see the upstream
+[encryption notes][send-encryption]. To report a vulnerability in
+this fork, see [SECURITY.md](SECURITY.md).
 
 ---
 
-## Contributing
+## Scripting
 
-Pull requests and issues are welcome at
-<https://github.com/tarnover/sndr>. Please keep changes focused, run
-`cargo clippy --no-deps` and `cargo build` before submitting, and add
-a test where it makes sense.
+`sndr` is designed for unattended use. The three flags you almost
+always want in a script:
 
-If a change applies equally well to upstream `timvisee/ffsend`, please
-open it there too so the broader community benefits.
+- `-I` / `--no-interact` — fail fast instead of waiting for stdin
+- `-y` / `--yes` — assume yes for confirmations
+- `-q` / `--quiet` — print only the share URL on upload
+
+```bash
+set -e
+URL=$(sndr -Iy upload -q backup.tar.gz)
+echo "share: $URL"
+sndr -I password "$URL" --password="$(pwgen 24 1)"
+```
+
+Or set the equivalents globally and forget about them:
+
+```bash
+export SNDR_NO_INTERACT=1 SNDR_YES=1 SNDR_QUIET=1
+```
+
+`sndr` exits non-zero on any failure, including expired shares and
+network errors, so `set -e` works as expected.
+
+---
+
+## Build
+
+```bash
+git clone https://github.com/tarnover/sndr.git
+cd sndr
+
+cargo build --release -j2          # build the release binary
+cargo clippy --no-deps             # lint
+./target/release/sndr --version
+
+cargo install --path . -f          # install into ~/.cargo/bin
+```
+
+Feature flags (all enabled by default unless marked):
+
+| Feature          | Default | What it does                                       |
+| :--------------- | :-----: | :------------------------------------------------- |
+| `send3`          |   ✓     | Send v3 protocol (current servers)                 |
+| `send2`          |         | Send v2 protocol (older servers)                   |
+| `crypto-ring`    |   ✓     | Pure-Rust crypto backend                           |
+| `crypto-openssl` |         | OpenSSL crypto backend (needs system OpenSSL)      |
+| `clipboard`      |   ✓     | `--copy` support via xclip / xsel / native API     |
+| `history`        |   ✓     | Local share history                                |
+| `archive`        |   ✓     | Tar directories on upload, untar on download       |
+| `qrcode`         |   ✓     | Render share URLs as QR codes                      |
+| `urlshorten`     |   ✓     | Built-in URL shortener integration                 |
+| `infer-command`  |   ✓     | `sndrput`, `sndrget`, `sndrdel` symlink dispatch   |
+| `no-color`       |         | Disable colored output                             |
+
+Override with `cargo install --no-default-features --features ...`.
+
+---
+
+## Migrating from ffsend
+
+If you already had `ffsend` installed and configured, here's the
+quick migration. Nothing happens automatically — `sndr` is a clean
+break, not a drop-in.
+
+| What changes        | Old (`ffsend`)                 | New (`sndr`)                 |
+| :------------------ | :----------------------------- | :--------------------------- |
+| Binary name         | `ffsend`                       | `sndr`                       |
+| Env-var prefix      | `FFSEND_*`                     | `SNDR_*`                     |
+| History file        | `~/.cache/ffsend/history.toml` | `~/.cache/sndr/history.toml` |
+| Symlink dispatch    | `ffput` / `ffget` / `ffdel`    | `sndrput` / `sndrget` / `sndrdel` |
+| Default host        | `https://send.vis.ee/`         | `https://snd.dx.pe/`         |
+
+Carry your share history over (one-time):
+
+```bash
+mkdir -p ~/.cache/sndr
+cp ~/.cache/ffsend/history.toml ~/.cache/sndr/history.toml
+```
+
+Rename env vars in your shell rc:
+
+```bash
+sed -i 's/FFSEND_/SNDR_/g' ~/.bashrc ~/.zshrc 2>/dev/null
+```
+
+`sndr` and `ffsend` can coexist — different binary names, different
+config paths — so you can roll back at any time by switching back to
+the old binary.
+
+---
+
+## Project status
+
+This fork is maintained by [tarnover](https://github.com/tarnover) to
+support the [`tarnover/send`](https://github.com/tarnover/send) server
+fork. Upstream [`timvisee/ffsend`](https://github.com/timvisee/ffsend)
+remains the canonical implementation for users who want the
+broadly-packaged binary.
+
+```
+mozilla/send  →  timvisee/ffsend  →  tarnover/sndr (this repo)
+```
+
+Bug reports and PRs welcome at
+[github.com/tarnover/sndr](https://github.com/tarnover/sndr). See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the contribution flow and
+[SECURITY.md](SECURITY.md) for vulnerability reporting.
 
 ---
 
 ## Acknowledgements
 
-This project would not exist without:
-
-- **Mozilla**, who designed and open-sourced the original
-  [Firefox Send][mozilla-send] protocol and codebase.
-- **Tim Visee** ([@timvisee](https://github.com/timvisee)), who kept the
-  service alive after Mozilla discontinued it — both as the
-  [`timvisee/send`][timvisee-send] server fork and as the original
-  [`timvisee/ffsend`][timvisee-ffsend] CLI that this fork was rebranded
+- **Mozilla** — designed and open-sourced the original
+  [Firefox Send][mozilla-send] protocol and codebase before
+  discontinuing the service in 2020.
+- **Tim Visée** ([@timvisee](https://github.com/timvisee)) — kept the
+  protocol alive as both the [`timvisee/send`][timvisee-send] server
+  fork and the original
+  [`timvisee/ffsend`][timvisee-ffsend] CLI that this rebrand started
   from.
-- The contributors listed at upstream for keeping packaging, translations,
-  and documentation healthy.
 
 ---
 
 ## License
 
-This project is released under the GNU GPL-3.0 license.
-See the [LICENSE](LICENSE) file for the full text.
+GNU GPL-3.0. See [LICENSE](LICENSE).
 
-[rust]: https://rust-lang.org/
-[rustup]: https://rustup.rs/
-[termux]: https://termux.com/
+[mozilla-send]: https://github.com/mozilla/send
+[timvisee-ffsend]: https://github.com/timvisee/ffsend
 [timvisee-send]: https://github.com/timvisee/send
+[tarnover-send]: https://github.com/tarnover/send
 [send-encryption]: https://github.com/timvisee/send/blob/master/docs/encryption.md
