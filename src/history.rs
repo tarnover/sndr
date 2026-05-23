@@ -63,7 +63,8 @@ impl History {
             Some(version) => {
                 if let Ok(true) = version_compare::compare_to(version, VERSION_MIN, Cmp::Lt) {
                     print_warning("history file version is too old, ignoring");
-                } else if let Ok(true) = version_compare::compare_to(version, VERSION_MAX, Cmp::Gt) {
+                } else if let Ok(true) = version_compare::compare_to(version, VERSION_MAX, Cmp::Gt)
+                {
                     print_warning("history file has an unknown version, ignoring");
                 }
             }
